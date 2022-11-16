@@ -1,0 +1,23 @@
+jtype: Flow
+with:
+  monitoring: true
+  port_expose: 8080
+  env:
+    JINA_LOG_LEVEL: DEBUG
+jcloud:
+  version: '3.7.0'
+  retention_days: 21
+  custom_dns:
+    - 'secret-santa.jina.ai'
+executors:
+  - name: secret_santa_executor
+    uses: SecretSanta
+    needs: gateway
+    uses_with:
+    participants:
+      - Isabelle
+      - Leon
+      - Max
+      - Florian
+    env:
+      JINA_LOG_LEVEL: DEBUG
