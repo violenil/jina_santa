@@ -1,3 +1,8 @@
 jtype: SecretSanta
 py_modules:
  - secret_santa.py
+metas:
+ name: SecretSanta
+ description: Executor that allows adding of participants and assigning of secret santas.
+ url: https://github.com/violenil/jina_santa
+ keywords: [ random, secret santa, assign, participants ]
