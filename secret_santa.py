@@ -14,6 +14,7 @@ class SecretSanta(Executor):
 
     def __init__(self, participants: List[str], *args, **kwargs):
         super().__init__(*args, **kwargs)
+        random.seed(4)
         random.shuffle(participants)
         self.nicknames = [p.split("@")[0] for p in participants]
         self.allowed_emails = participants
