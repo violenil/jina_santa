@@ -1,9 +1,10 @@
+import random
 from typing import List
 
 import hubble
 from hubble import AuthenticationRequiredError
-from hubble import login_required
 from jina import Executor, requests, Document, DocumentArray
+from jina.logging.logger import JinaLogger
 
 
 class SecretSanta(Executor):
@@ -13,60 +14,64 @@ class SecretSanta(Executor):
 
     def __init__(self, participants: List[str], *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.participants = DocumentArray(
-            [Document(text=p) for p in participants.keys()]
-        )
-        self.allowed_emails = [email for email in participants.values()]
+        random.shuffle(participants)
+        self.nicknames = [p.split("@")[0] for p in participants]
+        self.allowed_emails = participants
         self.secret_map = self._match_santas_to_santees()
+        self.logger = JinaLogger(self.__class__.__name__)
 
-    def _get_user_info(self, token):
+    def _get_user_info(self, token) -> dict:
         try:
             client = hubble.Client(token=token, max_retries=None, jsonify=True)
             user_info = client.get_user_info()
             if user_info["code"] != 200:
-                raise PermissionError(
-                    "Wrong token passed or the token is expired! Please re-login."
-                )
+                self.logger.info("Could not retrieve user info.")
             return user_info["data"]
         except AuthenticationRequiredError as e:
-            raise PermissionError(
-                "Token expired or invalid. Please use an updated token.", e
-            )
+            self.logger.info("Authentication failed. Check token.")
+            return {}
 
-    def _verify_user(self, santa):
-        token = str(hubble.Auth.get_auth_token())
-        user_info = self._get_user_info(token)
-        user_email = user_info.get("email")
-        nickname = user_info.get("nickname")
-        if user_email in self.allowed_emails and santa.lower() in nickname:
+    def _verify_user_email(self, user_email) -> bool:
+        if user_email in self.allowed_emails:
             return True
-        raise PermissionError(
-            f'User {user_info.get("email") or user_info["_id"]} has no permission to access this Secret Santa app.'
-        )
+        self.logger.info("User email not allowed.")
+        return False
+
+    def _check_santa(self, santa: str) -> bool:
+        if santa in self.secret_map:
+            return True
+        self.logger.info("User is not a santa.")
+        return False
 
     @requests(on="/match_me")
-    @login_required
     def get_santee(self, parameters: dict, **kwargs):
         """
         Get a random santee for a santa from the list of santa's.
         A santee can only be assigned once, and a santa cannot be their own santee.
         """
-        santa = parameters.get("santa")
-        if santa in self.secret_map and self._verify_user(santa):
-            print(f"Santa {santa} --> {self.secret_map[santa]}")
+        token = parameters.get("token")
+        if not token:
+            return DocumentArray()
+        user_info = self._get_user_info(token)
+        if not user_info:
+            return DocumentArray()
+        nickname = user_info.get("nickname")
+        if not self._check_santa(nickname):
+            return DocumentArray()
+        elif self._verify_user_email(user_info.get("email")):
+            return DocumentArray([Document(text=self.secret_map[nickname])])
         else:
-            print(f"{santa} is not a santa!")
+            return DocumentArray()
 
     def _match_santas_to_santees(self):
         """
         This matching function randomly assigns one participant to each santa.
         """
-        random_santas = self.participants.shuffle()
         secret_map = {}
-        for i, santa in enumerate(random_santas):
-            if i == len(random_santas) - 1:
-                santee = random_santas[0]
+        for i, santa in enumerate(self.nicknames):
+            if i == len(self.nicknames) - 1:
+                santee = self.nicknames[0]
             else:
-                santee = random_santas[i + 1]
-            secret_map[santa.text] = santee.text
+                santee = self.nicknames[i + 1]
+            secret_map[santa] = santee
         return secret_map
